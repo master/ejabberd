@@ -72,6 +72,7 @@
 -define(MAX_TRANSACTION_RESTARTS, 10).
 -define(PGSQL_PORT, 5432).
 -define(MYSQL_PORT, 3306).
+-define(MONGO_PORT, 27017).
 
 -define(TRANSACTION_TIMEOUT, 60000). % milliseconds
 -define(KEEPALIVE_TIMEOUT, 60000).
@@ -198,6 +199,8 @@ connecting(connect, #state{host = Host} = State) ->
 			 apply(fun mysql_connect/5, Args);
 		     [pgsql | Args] ->
 			 apply(fun pgsql_connect/5, Args);
+		     [mongo | Args] ->
+			 apply(fun mongo_connect/5, Args);
 		     [odbc | Args] ->
 			 apply(fun odbc_connect/1, Args)
 		 end,
@@ -434,8 +437,13 @@ sql_query_internal(Query) ->
                   ?DEBUG("MySQL, Send query~n~p~n", [Query]),
                   R = mysql_to_odbc(mysql_conn:fetch(State#state.db_ref,
 						     Query, self())),
-                  %% ?INFO_MSG("MySQL, Received result~n~p~n", [R]),
-                  R
+                  ?DEBUG("MySQL, Received result~n~p~n", [R]),
+                  R;		      
+	      mongo ->
+		  ?DEBUG("MongoDB, Send query~n~p~n", [Query]),
+		  R = mongosql_conn:fetch(State#state.db_ref, Query, true),
+		  ?DEBUG("MongoDB, Received result~n~p~n", [R]),
+		  R
           end,
     case Res of
 	{error, "No SQL-driver information available."} ->
@@ -499,6 +507,11 @@ pgsql_item_to_odbc({error, Error}) ->
 pgsql_item_to_odbc(_) ->
     {updated,undefined}.
 
+%% == Native MongoDB code
+
+mongo_connect(Server, Port, DB, Username, Password) ->
+    mongosql_conn:start(Server, Port, Username, Password, DB).
+
 %% == Native MySQL code
 
 %% part of init/1
@@ -554,6 +567,11 @@ db_opts(Host) ->
 	    [mysql, Server, ?MYSQL_PORT, DB, User, Pass];
 	{mysql, Server, Port, DB, User, Pass} when is_integer(Port) ->
 	    [mysql, Server, Port, DB, User, Pass];
+	%% Default mongo port
+	{mongo, Server, DB, User, Pass} ->
+	    [mongo, Server, ?MONGO_PORT, DB, User, Pass];
+	{mongo, Server, Port, DB, User, Pass} when is_integer(Port) ->
+	    [mongo, Server, Port, DB, User, Pass];
 	SQLServer when is_list(SQLServer) ->
 	    [odbc, SQLServer]
     end.

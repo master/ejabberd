@@ -51,7 +51,9 @@ check_database_module(odbc) ->
 check_database_module(mysql) ->
     check_modules(mysql, [mysql, mysql_auth, mysql_conn, mysql_recv]);
 check_database_module(pgsql) ->
-    check_modules(pgsql, [pgsql, pgsql_proto, pgsql_tcp, pgsql_util]).
+    check_modules(pgsql, [pgsql, pgsql_proto, pgsql_tcp, pgsql_util]);
+check_database_module(mongo) ->
+    check_modules(mongo, [mongosql_conn, mongosql_sem, sql92_parser, sql92_scan]).
 
 %% @doc Issue a critical error and throw an exit if needing module is
 %% missing.
