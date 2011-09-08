@@ -40,7 +40,8 @@
 	 escape/1,
 	 escape_like/1,
 	 to_bool/1,
-	 keep_alive/1]).
+	 keep_alive/1,
+	 get_db_type/0]).
 
 %% gen_fsm callbacks
 -export([init/1,
@@ -591,3 +592,7 @@ fsm_limit_opts() ->
 	_ ->
 	    []
     end.
+
+get_db_type() ->
+    State = get(?STATE_KEY),
+    State#state.db_type.
