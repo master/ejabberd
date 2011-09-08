@@ -231,9 +231,10 @@ create_node_permission(Host, ServerHost, Node, _ParentNode, Owner, Access) ->
 create_node(NodeId, Owner) ->
     OwnerKey = jlib:jid_tolower(jlib:jid_remove_resource(Owner)),
     State = #pubsub_state{stateid = {OwnerKey, NodeId}, affiliation = owner},
+    I = randoms:get_string(),
     catch ejabberd_odbc:sql_query_t(
-	    ["insert into pubsub_state(nodeid, jid, affiliation, subscriptions) "
-	     "values(", state_to_raw(NodeId, State), ");"]),
+	    ["insert into pubsub_state(nodeid, jid, affiliation, subscriptions, stateid) "
+	     "values(", state_to_raw(NodeId, State), ", '", I,"');"]),
     {result, {default, broadcast}}.
 
 %% @spec (Removed) -> ok
@@ -944,9 +945,10 @@ set_state(NodeId, State) ->
 	{updated, 1} ->
 	    ok;
 	_ ->
+            I = randoms:get_string(),
 	    catch ejabberd_odbc:sql_query_t(
-		    ["insert into pubsub_state(nodeid, jid, affiliation, subscriptions) "
-		     "values('", NodeId, "', '", J, "', '", A, "', '", S, "');"])
+		    ["insert into pubsub_state(nodeid, jid, affiliation, subscriptions, stateid) "
+		     "values('", NodeId, "', '", J, "', '", A, "', '", S, "', '", I, "');"])
     end,
     {result, []}.
 
@@ -1292,9 +1294,10 @@ update_affiliation(NodeId, JID, Affiliation) ->
 	{updated, 1} ->
 	    ok;
 	_ ->
+            I = randoms:get_string(),
 	    catch ejabberd_odbc:sql_query_t(
-		    ["insert into pubsub_state(nodeid, jid, affiliation, subscriptions) "
-		     "values('", NodeId, "', '", J, "', '", A, "', '');"])
+		    ["insert into pubsub_state(nodeid, jid, affiliation, stateid, subscriptions) "
+		     "values('", NodeId, "', '", J, "', '", A, "', '", I, "', '');"])
     end.
 
 update_subscription(NodeId, JID, Subscription) ->
@@ -1307,9 +1310,10 @@ update_subscription(NodeId, JID, Subscription) ->
 	{updated, 1} ->
 	    ok;
 	_ ->
+            I = randoms:get_string(),
 	    catch ejabberd_odbc:sql_query_t(
-		    ["insert into pubsub_state(nodeid, jid, affiliation, subscriptions) "
-		     "values('", NodeId, "', '", J, "', 'n', '", S, "');"])
+		    ["insert into pubsub_state(nodeid, jid, affiliation, subscriptions, stateid) "
+		     "values('", NodeId, "', '", J, "', 'n', '", S, "', '", I, "');"])
     end.
 
 decode_jid(SJID) -> jlib:jid_tolower(jlib:string_to_jid(SJID)).
