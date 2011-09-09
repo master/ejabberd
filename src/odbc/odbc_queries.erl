@@ -523,9 +523,10 @@ remove_privacy_list(Username, SName) ->
        "where username='", Username, "' and name='", SName, "';"]).
 
 add_privacy_list(Username, SName) ->
+    Id = randoms:get_string(),
     ejabberd_odbc:sql_query_t(
-      ["insert into privacy_list(username, name) "
-       "values ('", Username, "', '", SName, "');"]).
+      ["insert into privacy_list(username, name, id) "
+       "values ('", Username, "', '", SName, "', '", Id, "');"]).
 
 set_privacy_list(ID, RItems) ->
     ejabberd_odbc:sql_query_t(
