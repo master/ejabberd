@@ -265,9 +265,26 @@ delete_node(Host, Node) ->
     H = ?PUBSUB:escape(Host),
     N = ?PUBSUB:escape(?PUBSUB:node_to_string(Node)),
     Removed = get_subnodes_tree(Host, Node),
-    catch ejabberd_odbc:sql_query_t(
-	    ["delete from pubsub_node "
-	     "where host='", H, "' and node like '", N, "%';"]),
+    case catch ejabberd_odbc:sql_query_t(
+                 ["select nodeid from pubsub_node "
+                  "where host='", H, "' and node like '", N, "%';"]) of
+        {selected, ["nodeid"], [{I}]} ->
+            catch ejabberd_odbc:sql_query_t(
+                    ["delete from pubsub_node "
+                     "where host='", H, "' and node like '", N, "%';"]),
+            catch ejabberd_odbc:sql_query_t(
+                    ["delete from pubsub_node_option where nodeid='", I, "';"]),
+            catch ejabberd_odbc:sql_query_t(
+                    ["delete from pubsub_node_owner where nodeid='", I, "';"]),
+            catch ejabberd_odbc:sql_query_t(
+                    ["delete from pubsub_state where nodeid='", I, "';"]),
+            catch ejabberd_odbc:sql_query_t(
+                    ["delete from pubsub_item where nodeid='", I, "';"]);
+        _ ->
+            catch ejabberd_odbc:sql_query_t(
+                    ["delete from pubsub_node "
+                     "where host='", H, "' and node like '", N, "%';"])
+    end,
     Removed.
 
 %% helpers
