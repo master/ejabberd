@@ -591,20 +591,29 @@ get_entity_affiliations(Host, Owner) ->
     GenKey = jlib:jid_remove_resource(SubKey),
     H = ?PUBSUB:escape(Host),
     J = encode_jid(GenKey),
-    Reply = case catch ejabberd_odbc:sql_query_t(
-		 ["select node, type, i.nodeid, affiliation "
-		  "from pubsub_state i, pubsub_node n "
-		  "where i.nodeid = n.nodeid "
-		  "and jid='", J, "' "
-		  "and host='", H, "';"]) of
-	    {selected, ["node", "type", "nodeid", "affiliation"], RItems} ->
-		lists:map(fun({N, T, I, A}) ->
-		    Node = nodetree_tree_odbc:raw_to_node(Host, {N, "", T, I}),
-		    {Node, decode_affiliation(A)}
-		end, RItems);
-	    _ ->
-		[]
-    end,
+    Result = case ejabberd_odbc:get_db_type() of
+                 mongo -> 
+                     Query1 = ["select node, type, nodeid from pubsub_node where host='", H, "';"],
+                     Query2 = ["select nodeid, affiliation from pubsub_state where jid='", J, "';"],
+                     catch mongosql_join:natural(ejabberd_odbc:sql_query_t(Query1),
+                                                 ejabberd_odbc:sql_query_t(Query2));
+                 _Else ->
+                     catch ejabberd_odbc:sql_query_t(
+                             ["select node, type, i.nodeid, affiliation "
+                              "from pubsub_state i, pubsub_node n "
+                              "where i.nodeid = n.nodeid "
+                              "and jid='", J, "' "
+                              "and host='", H, "';"])
+             end,
+    Reply = case Result of
+                {selected, ["node", "type", "nodeid", "affiliation"], RItems} ->
+                    lists:map(fun({N, T, I, A}) ->
+                                      Node = nodetree_tree_odbc:raw_to_node(Host, {N, "", T, I}),
+                                      {Node, decode_affiliation(A)}
+                              end, RItems);
+                _ ->
+                    []
+            end,
     {result, Reply}.
 
 get_node_affiliations(NodeId) ->
