@@ -57,6 +57,7 @@ start(normal, _Args) ->
     ejabberd_config:start(),
     ejabberd_check:config(),
     connect_nodes(),
+    maybe_start_emongo(),
     %% Loading ASN.1 driver explicitly to avoid races in LDAP
     catch asn1rt:load_driver(),
     Sup = ejabberd_sup:start_link(),
@@ -195,6 +196,23 @@ maybe_add_nameservers() ->
     case os:type() of
 	{win32, _} -> add_windows_nameservers();
 	_ -> ok
+    end.
+
+maybe_start_emongo() ->
+    Mongo = lists:any(
+	      fun(Host) ->
+		      case ejabberd_config:get_local_option({odbc_server, Host}) of
+		      	  undefined ->
+		      	      false;
+		      	  DB ->
+		      	      case element(1, DB) of
+		      		  mongo -> true;
+		      		  _ -> false
+		      	      end
+		      end
+	      end, ?MYHOSTS),
+    if Mongo -> application:start(emongo);
+       true -> ok
     end.
 
 add_windows_nameservers() ->
