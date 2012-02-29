@@ -538,16 +538,21 @@ get_user_list(_, User, Server) ->
 	{selected, ["name"], []} ->
 	    #userlist{};
 	{selected, ["name"], [{Default}]} ->
-	    case catch sql_get_privacy_list_data(LUser, LServer, Default) of
-		{selected, ["t", "value", "action", "ord", "match_all",
-			    "match_iq", "match_message",
-			    "match_presence_in", "match_presence_out"],
-		 RItems} ->
-		    Items = lists:map(fun raw_to_item/1, RItems),
-		    NeedDb = is_list_needdb(Items),
-		    #userlist{name = Default, list = Items, needdb = NeedDb};
-		_ ->
-		    #userlist{}
+	    case catch sql_get_privacy_list_id(LUser, LServer, Default) of
+		{selected, ["id"], []} ->
+		    #userlist{};
+		{selected, ["id"], [{ID}]} ->
+		    case catch sql_get_privacy_list_data_by_id(ID, LServer) of
+			{selected, ["t", "value", "action", "ord", "match_all",
+				    "match_iq", "match_message",
+				    "match_presence_in", "match_presence_out"],
+			 RItems} ->
+			    Items = lists:map(fun raw_to_item/1, RItems),
+			    NeedDb = is_list_needdb(Items),
+			    #userlist{name = Default, list = Items, needdb = NeedDb};
+			_ ->
+			    #userlist{}
+		    end
 	    end;
 	_ ->
 	    #userlist{}
