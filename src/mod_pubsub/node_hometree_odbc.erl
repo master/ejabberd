@@ -673,12 +673,12 @@ get_entity_subscriptions(Host, Owner) ->
                                             GenKey ->
                                                 {["select node, type, nodeid "
                                                   "from pubsub_node where host='", H, "';"],
-                                                 ["nodeid, jid, subscriptions "
+                                                 ["select nodeid, jid, subscriptions "
                                                   "from pubsub_state where jid like '", GJ, "%';"]};
                                             _ ->
                                                 {["select node, type, nodeid from "
                                                   "pubsub_node where host='", H, "';"],
-                                                 ["nodeid, jid, subscriptions from "
+                                                 ["select nodeid, jid, subscriptions from "
                                                   "pubsub_state where jid in ('", SJ, "', '", GJ, "');"]}
                                         end,
                      catch mongosql_join:natural(ejabberd_odbc:sql_query_t(Query1),
