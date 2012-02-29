@@ -198,21 +198,40 @@ get_entity_subscriptions(_Host, Owner) ->
     Host = ?PUBSUB:escape(element(2, SubKey)),
     SJ = node_hometree_odbc:encode_jid(SubKey),
     GJ = node_hometree_odbc:encode_jid(GenKey),
-    Query = case SubKey of
-	GenKey ->
-	    ["select host, node, type, i.nodeid, jid, subscriptions "
-	     "from pubsub_state i, pubsub_node n "
-	     "where i.nodeid = n.nodeid "
-	     "and jid like '", GJ, "%' "
-	     "and host like '%@", Host, "';"];
-	_ ->
-	    ["select host, node, type, i.nodeid, jid, subscriptions "
-	     "from pubsub_state i, pubsub_node n "
-	     "where i.nodeid = n.nodeid "
-	     "and jid in ('", SJ, "', '", GJ, "') "
-	     "and host like '%@", Host, "';"]
-    end,
-    Reply = case catch ejabberd_odbc:sql_query_t(Query) of
+    Result = case ejabberd_odbc:get_db_type() of
+                 mongo ->
+                     {Query1, Query2} = case SubKey of
+                                            GenKey ->
+                                                {["select host, node, type, nodeid "
+                                                  "from pubsub_node where host like '%@", Host, "';"],
+                                                 ["nodeid, jid, subscriptions "
+                                                  "from pubsub_state where jid like '", GJ, "%';"]};
+                                            _ ->
+                                                {["select host, node, type, nodeid from "
+                                                  "pubsub_node where host like '%@", Host, "';"],
+                                                 ["nodeid, jid, subscriptions from "
+                                                  "pubsub_state where jid in ('", SJ, "', '", GJ, "');"]}
+                                        end,
+                     catch mongosql_join:natural(ejabberd_odbc:sql_query_t(Query1),
+                                                 ejabberd_odbc:sql_query_t(Query2));
+                 _Else ->
+                     Query = case SubKey of
+                                 GenKey ->
+                                     ["select host, node, type, i.nodeid, jid, subscriptions "
+                                      "from pubsub_state i, pubsub_node n "
+                                      "where i.nodeid = n.nodeid "
+                                      "and jid like '", GJ, "%' "
+                                      "and host like '%@", Host, "';"];
+                                 _ ->
+                                     ["select host, node, type, i.nodeid, jid, subscriptions "
+                                      "from pubsub_state i, pubsub_node n "
+                                      "where i.nodeid = n.nodeid "
+                                      "and jid in ('", SJ, "', '", GJ, "') "
+                                      "and host like '%@", Host, "';"]
+                             end,
+                     catch ejabberd_odbc:sql_query_t(Query)
+             end,
+    Reply = case Result of
 	{selected, ["host", "node", "type", "nodeid", "jid", "subscriptions"], RItems} ->
 	    lists:map(fun({H, N, T, I, J, S}) ->
 		O = node_hometree_odbc:decode_jid(H),
