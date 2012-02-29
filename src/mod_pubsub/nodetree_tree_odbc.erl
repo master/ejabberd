@@ -326,9 +326,10 @@ set_node(Record) ->
 			      "where nodeid='", OldNodeId, "';"]),
 		     OldNodeId;
 		 _ ->
+		     I = randoms:get_string(),
 		     catch ejabberd_odbc:sql_query_t(
-			     ["insert into pubsub_node(host, node, parent, type) "
-			      "values('", H, "', '", N, "', '", P, "', '", Type, "');"]),
+			     ["insert into pubsub_node(nodeid, host, node, parent, type) "
+			      "values('", I, "', '", H, "', '", N, "', '", P, "', '", Type, "');"]),
 		     case nodeid(Host, Node) of
 			 {result, NewNodeId} -> NewNodeId;
 			 _ -> none  % this should not happen
