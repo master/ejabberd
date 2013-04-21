@@ -467,8 +467,8 @@ process_host_term(Term, Host, State) ->
 	    State;
 	{odbc_server, ODBC_server} ->
 	    add_option({odbc_server, Host}, ODBC_server, State);
-        {modules, Modules} ->
-            add_option({modules, Host}, replace_modules(Modules), State);
+    {modules, Modules} ->
+        add_option({modules, Host}, replace_modules(Modules), State);
 	{Opt, Val} ->
 	    add_option({Opt, Host}, Val, State)
     end.
@@ -625,6 +625,7 @@ replace_module(mod_roster_odbc) -> {mod_roster, odbc};
 replace_module(mod_shared_roster_odbc) -> {mod_shared_roster, odbc};
 replace_module(mod_vcard_odbc) -> {mod_vcard, odbc};
 replace_module(mod_vcard_xupdate_odbc) -> {mod_vcard_xupdate, odbc};
+replace_module(mod_roster_redis) -> {mod_roster, redis};
 replace_module(Module) -> Module.
 
 replace_modules(Modules) ->
@@ -634,6 +635,10 @@ replace_modules(Modules) ->
                   {NewModule, DBType} ->
                       NewOpts = [{db_type, DBType} |
                                  lists:keydelete(db_type, 1, Opts)],
+                      case DBType of 
+                        redis_server -> ?ERROR_MSG("redis_server : module ~p , options ~p", [NewModule, NewOpts]);
+                        _ -> ok
+                      end, 
                       {NewModule, NewOpts};
                   NewModule ->
                       {NewModule, Opts}
