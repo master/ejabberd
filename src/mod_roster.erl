@@ -1172,32 +1172,34 @@ get_in_pending_subscriptions(Ls, User, Server, mnesia) ->
 get_in_pending_subscriptions(Ls, User, Server, redis) ->
     % TODO: must be implemented
     JID = jlib:make_jid(User, Server, ""),
-    Items = get_roster(User, Server, redis), 
-    Ls ++ lists:map(
-    fun(R) ->
-        Message = R#roster.askmessage,
-        {xmlelement, "presence",
-         [{"from", jlib:jid_to_string(R#roster.jid)},
-          {"to", jlib:jid_to_string(JID)},
-          {"type", "subscribe"}],
-         [{xmlelement, "status", [],
-           [{xmlcdata, Message}]}]}
-    end,
-    lists:flatmap(
-      fun(I) ->
-          case raw_to_record(Server, I) of
-          %% Bad JID in database:
-          error ->
-              [];
-          R ->
-              case R#roster.ask of
-              in   -> [R];
-              both -> [R];
-              _ -> []
-              end
-          end
-      end,
-      Items));
+    case get_roster(User, Server, redis) of
+    [] -> Ls;
+    Result -> 
+    	    Ls ++ lists:map(
+		    fun(R) ->
+			    Message = R#roster.askmessage,
+			    Status  = if is_binary(Message) ->
+					      binary_to_list(Message);
+					 true ->
+					      ""
+				      end,
+			    {xmlelement, "presence",
+			     [{"from", jlib:jid_to_string(R#roster.jid)},
+			      {"to", jlib:jid_to_string(JID)},
+			      {"type", "subscribe"}],
+			     [{xmlelement, "status", [],
+			       [{xmlcdata, Status}]}]}
+		    end,
+		    lists:filter(
+		      fun(R) ->
+			      case R#roster.ask of
+				  in   -> true;
+				  both -> true;
+				  _ -> false
+			      end
+		      end,
+		      Result))
+    end;
 get_in_pending_subscriptions(Ls, User, Server, odbc) ->
     JID = jlib:make_jid(User, Server, ""),
     LUser = JID#jid.luser,
