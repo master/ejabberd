@@ -193,7 +193,7 @@ read_roster_version(LUser, LServer, mnesia) ->
 read_roster_version(LUser, LServer, redis) ->
     Redis_host = redis_host(LServer),
     Redis_port = redis_port(LServer),
-    {ok, C} = eredis:start_link(Redis_host, Redis_port),
+    {ok, C} = eredis:start_link(Redis_host, Redis_port, no_dbselection),
     case catch eredis:q(C, ["GET", "rosterversion::" ++ LUser ++ "," ++ LServer]) of
         {ok, BVersion} when is_binary(BVersion) -> binary_to_list(BVersion);
         _ -> error 
@@ -229,7 +229,7 @@ write_roster_version(LUser, LServer, InTransaction, Ver, mnesia) ->
 write_roster_version(LUser, LServer, _InTransaction, Ver, redis) ->
     Redis_host = redis_host(LServer),
     Redis_port = redis_port(LServer),
-    {ok, C} = eredis:start_link(Redis_host, Redis_port),
+    {ok, C} = eredis:start_link(Redis_host, Redis_port, no_dbselection),
     eredis:q(C, ["SET", "rosterversion:" ++ LUser ++ "," ++ LServer, Ver]),
     ok;
 write_roster_version(LUser, LServer, InTransaction, Ver, odbc) ->
@@ -335,7 +335,7 @@ get_roster(LUser, LServer, mnesia) ->
 get_roster(LUser, LServer, redis) ->
     Redis_host = gen_mod:get_module_opt(LServer, ?MODULE, redis_host, undefined),
     Redis_port = gen_mod:get_module_opt(LServer, ?MODULE, redis_port, undefined),
-    {ok, C} = eredis:start_link(Redis_host, Redis_port),
+    {ok, C} = eredis:start_link(Redis_host, Redis_port, no_dbselection),
     case catch eredis:q(C, ["HGETALL", "rosterusers::" ++ LUser ]) of
         {ok, BListEntries} when is_list(BListEntries) ->
             Entries = redis_make_list_entries(BListEntries),
@@ -679,7 +679,7 @@ roster_subscribe_t(LUser, LServer, LJID, Item, redis) ->
     Redis_host = gen_mod:get_module_opt(LServer, ?MODULE, redis_host, undefined),
     Redis_port = gen_mod:get_module_opt(LServer, ?MODULE, redis_port, undefined),
     {RUser, RServer, _} = LJID,
-    {ok, C} = eredis:start_link(Redis_host, Redis_port),
+    {ok, C} = eredis:start_link(Redis_host, Redis_port, no_dbselection),
     Name = Item#roster.name,
     Subscription = redis_subscription_to_string(Item#roster.subscription),
     Ask = redis_ask_to_string(Item#roster.ask),
@@ -691,7 +691,7 @@ roster_subscribe_t(LUser, LServer, LJID, Item, redis) ->
             [] -> ""
         end,
     NewRosterEntry = Name ++ "::" ++ Subscription ++ "::" ++ Ask ++ "::" ++ AskMessage ++ "::" ++ Groups,
-    {ok, C} = eredis:start_link(Redis_host, Redis_port),
+    {ok, C} = eredis:start_link(Redis_host, Redis_port, no_dbselection),
     eredis:q(C, ["HSET", "rosterusers::" ++ LUser, RUser ++ "@" ++ RServer, NewRosterEntry]),
     ok;
 roster_subscribe_t(LUser, LServer, LJID, Item, odbc) ->
@@ -961,7 +961,7 @@ remove_user(LUser, LServer, mnesia) ->
 remove_user(LUser, LServer, redis) ->
     Redis_host = gen_mod:get_module_opt(LServer, ?MODULE, redis_host, undefined),
     Redis_port = gen_mod:get_module_opt(LServer, ?MODULE, redis_port, undefined),
-    {ok, C} = eredis:start_link(Redis_host, Redis_port),
+    {ok, C} = eredis:start_link(Redis_host, Redis_port, no_dbselection),
     eredis:q(C, ["DEL", "rosterusers::" ++ LUser ]),
     send_unsubscription_to_rosteritems(LUser, LServer),
     ok;
@@ -1041,7 +1041,7 @@ update_roster_t(LUser, LServer, LJID, Item, redis) ->
     NewRosterRedis = redis_make_record_from_roster_user(LUser, Item),
     Redis_host = gen_mod:get_module_opt(LServer, ?MODULE, redis_host, undefined),
     Redis_port = gen_mod:get_module_opt(LServer, ?MODULE, redis_port, undefined),
-    {ok, C} = eredis:start_link(Redis_host, Redis_port),
+    {ok, C} = eredis:start_link(Redis_host, Redis_port, no_dbselection),
     eredis:q(C, ["HSET", "rosterusers::" ++ LUser, RUser ++ "@" ++ RServer, NewRosterRedis]),
     ok;
 update_roster_t(LUser, LServer, LJID, Item, odbc) ->
@@ -1061,7 +1061,7 @@ del_roster_t(LUser, LServer, LJID, redis) ->
     {RUser, RServer, _} = LJID,
     Redis_host = gen_mod:get_module_opt(LServer, ?MODULE, redis_host, undefined),
     Redis_port = gen_mod:get_module_opt(LServer, ?MODULE, redis_port, undefined),
-    {ok, C} = eredis:start_link(Redis_host, Redis_port),
+    {ok, C} = eredis:start_link(Redis_host, Redis_port, no_dbselection),
     eredis:q(C, ["HSET", "rosterusers::" ++ LUser, RUser ++ "@" ++ RServer]),
     ok;
 del_roster_t(LUser, LServer, LJID, odbc) ->
