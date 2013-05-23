@@ -28,7 +28,7 @@
 -include("eredis.hrl").
 
 %% API
--export([start_link/5, stop/1, select_database/2]).
+-export([start_link/5, start_link/6, stop/1, select_database/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -43,7 +43,8 @@
 
           socket :: port() | undefined,
           parser_state :: #pstate{} | undefined,
-          queue :: queue() | undefined
+          queue :: queue() | undefined,
+          no_dbselection :: atom() | undefined
 }).
 
 %%
@@ -52,13 +53,15 @@
 
 -spec start_link(Host::list(),
                  Port::integer(),
-                 Database::integer(),
+                 Database::integer() | undefined,
                  Password::string(),
                  ReconnectSleep::reconnect_sleep()) ->
                         {ok, Pid::pid()} | {error, Reason::term()}.
 start_link(Host, Port, Database, Password, ReconnectSleep) ->
-    gen_server:start_link(?MODULE, [Host, Port, Database, Password, ReconnectSleep], []).
+    gen_server:start_link(?MODULE, [Host, Port, Database, Password, ReconnectSleep, none], []).
 
+start_link(Host, Port, Database, Password, ReconnectSleep, no_dbselection) ->
+    gen_server:start_link(?MODULE, [Host, Port, Database, Password, ReconnectSleep, no_dbselection], []).
 
 stop(Pid) ->
     gen_server:call(Pid, stop).
@@ -67,17 +70,16 @@ stop(Pid) ->
 %% gen_server callbacks
 %%====================================================================
 
-init([Host, Port, Database, Password, ReconnectSleep]) ->
+init([Host, Port, Database, Password, ReconnectSleep, DbSelection]) ->
     State = #state{host = Host,
                    port = Port,
-                   database = list_to_binary(integer_to_list(Database)),
+                   database = read_database(Database),
                    password = list_to_binary(Password),
                    reconnect_sleep = ReconnectSleep,
 
                    parser_state = eredis_parser:init(),
                    queue = queue:new()},
-
-    case connect(State) of
+    case connect(State, DbSelection) of
         {ok, NewState} ->
             {ok, NewState};
         {error, Reason} ->
@@ -97,6 +99,14 @@ handle_call(_Request, _From, State) ->
     {reply, unknown_request, State}.
 
 
+handle_cast({request, Req}, State) ->
+    case do_request(Req, undefined, State) of
+        {reply, _Reply, State1} ->
+            {noreply, State1};
+        {noreply, State1} ->
+            {noreply, State1}
+    end;
+
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -104,6 +114,10 @@ handle_cast(_Msg, State) ->
 handle_info({tcp, _Socket, Bs}, State) ->
     inet:setopts(State#state.socket, [{active, once}]),
     {noreply, handle_response(Bs, State)};
+
+handle_info({tcp_error, _Socket, _Reason}, State) ->
+    %% This will be followed by a close
+    {noreply, State};
 
 %% Socket got closed, for example by Redis terminating idle
 %% clients. If desired, spawn of a new process which will try to reconnect and
@@ -216,10 +230,10 @@ handle_response(Data, #state{parser_state = ParserState,
 reply(Value, Queue) ->
     case queue:out(Queue) of
         {{value, {1, From}}, NewQueue} ->
-            gen_server:reply(From, Value),
+            safe_reply(From, Value),
             NewQueue;
         {{value, {1, From, Replies}}, NewQueue} ->
-            gen_server:reply(From, lists:reverse([Value | Replies])),
+            safe_reply(From, lists:reverse([Value | Replies])),
             NewQueue;
         {{value, {N, From, Replies}}, NewQueue} when N > 1 ->
             queue:in_r({N - 1, From, [Value | Replies]}, NewQueue);
@@ -229,21 +243,29 @@ reply(Value, Queue) ->
             throw(empty_queue)
     end.
 
+safe_reply(undefined, _Value) ->
+    ok;
+safe_reply(From, Value) ->
+    gen_server:reply(From, Value).
 
 %% @doc: Helper for connecting to Redis, authenticating and selecting
 %% the correct database. These commands are synchronous and if Redis
 %% returns something we don't expect, we crash. Returns {ok, State} or
 %% {SomeError, Reason}.
-connect(State) ->
+connect(State, DbSelection) ->
     case gen_tcp:connect(State#state.host, State#state.port, ?SOCKET_OPTS) of
         {ok, Socket} ->
             case authenticate(Socket, State#state.password) of
                 ok ->
-                    case select_database(Socket, State#state.database) of
-                        ok ->
-                            {ok, State#state{socket = Socket}};
-                        {error, Reason} ->
-                            {error, {select_error, Reason}}
+                    case DbSelection of
+                        no_dbselection -> {ok, State#state{socket = Socket, no_dbselection = DbSelection}};
+                        _ ->
+                            case select_database(Socket, State#state.database) of
+                                ok ->
+                                    {ok, State#state{socket = Socket, no_dbselection = DbSelection}};
+                                {error, Reason} ->
+                                    {error, {select_error, Reason}}
+                            end
                     end;
                 {error, Reason} ->
                     {error, {authentication_error, Reason}}
@@ -252,6 +274,8 @@ connect(State) ->
             {error, {connection_error, Reason}}
     end.
 
+select_database(_Socket, undefined) ->
+    ok;
 select_database(Socket, Database) ->
     do_sync_command(Socket, ["SELECT", " ", Database, "\r\n"]).
 
@@ -282,7 +306,7 @@ do_sync_command(Socket, Command) ->
 %% successfully issuing the auth and select calls. When we have a
 %% connection, give the socket to the redis client.
 reconnect_loop(Client, #state{reconnect_sleep = ReconnectSleep} = State) ->
-    case catch(connect(State)) of
+    case catch(connect(State, State#state.no_dbselection)) of
         {ok, #state{socket = Socket}} ->
             gen_tcp:controlling_process(Socket, Client),
             Client ! {connection_ready, Socket};
@@ -296,3 +320,8 @@ reconnect_loop(Client, #state{reconnect_sleep = ReconnectSleep} = State) ->
             timer:sleep(ReconnectSleep),
             reconnect_loop(Client, State)
     end.
+
+read_database(undefined) ->
+    undefined;
+read_database(Database) when is_integer(Database) ->
+    list_to_binary(integer_to_list(Database)).

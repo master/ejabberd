@@ -16,7 +16,7 @@
 -define(TIMEOUT, 5000).
 
 -export([start_link/0, start_link/1, start_link/2, start_link/3, start_link/4,
-         start_link/5, stop/1, q/2, q/3, qp/2, qp/3]).
+         start_link/5, start_link/6, stop/1, q/2, q/3, qp/2, qp/3, q_noreply/2]).
 
 %% Exported for testing
 -export([create_multibulk/1]).
@@ -31,31 +31,51 @@ start_link() ->
 start_link(Host, Port) ->
     start_link(Host, Port, 0, "").
 
+start_link(Host, Port, no_dbselection) ->
+    start_link(Host, Port, 0, "", no_dbselection);
 start_link(Host, Port, Database) ->
     start_link(Host, Port, Database, "").
 
+start_link(Host, Port, Database, no_dbselection) ->
+    start_link(Host, Port, Database, "", no_dbselection);
 start_link(Host, Port,  Database, Password) ->
     start_link(Host, Port, Database, Password, 100).
 
+start_link(Host, Port,  Database, Password, no_dbselection) ->
+    start_link(Host, Port, Database, Password, 100, no_dbselection);
 start_link(Host, Port, Database, Password, ReconnectSleep)
+  when is_list(Host),
+       is_integer(Port),
+       is_integer(Database) orelse Database == undefined,
+       is_list(Password),
+       is_integer(ReconnectSleep) orelse ReconnectSleep =:= no_reconnect ->
+
+    eredis_client:start_link(Host, Port, Database, Password, ReconnectSleep).
+
+start_link(Host, Port, Database, Password, ReconnectSleep, no_dbselection)
   when is_list(Host);
        is_integer(Port);
        is_integer(Database);
        is_list(Password);
        is_integer(ReconnectSleep) orelse ReconnectSleep =:= no_reconnect ->
 
-    eredis_client:start_link(Host, Port, Database, Password, ReconnectSleep).
-
+    eredis_client:start_link(Host, Port, Database, Password, ReconnectSleep, no_dbselection).
 
 %% @doc: Callback for starting from poolboy
 -spec start_link(server_args()) -> {ok, Pid::pid()} | {error, Reason::term()}.
+start_link(no_dbselection) ->
+    start_link("127.0.0.1", 6379, 0, "", no_dbselection);
 start_link(Args) ->
     Host           = proplists:get_value(host, Args, "127.0.0.1"),
     Port           = proplists:get_value(port, Args, 6379),
     Database       = proplists:get_value(database, Args, 0),
     Password       = proplists:get_value(password, Args, ""),
     ReconnectSleep = proplists:get_value(reconnect_sleep, Args, 100),
-    start_link(Host, Port, Database, Password, ReconnectSleep).
+    case proplists:is_defined(reconnect_sleep, Args) of
+        true -> start_link(Host, Port, Database, Password, ReconnectSleep, no_dbselection);
+        _ -> start_link(Host, Port, Database, Password, ReconnectSleep)
+    end.
+
 
 stop(Client) ->
     eredis_client:stop(Client).
@@ -86,6 +106,12 @@ qp(Client, Pipeline) ->
 qp(Client, Pipeline, Timeout) ->
     pipeline(Client, Pipeline, Timeout).
 
+-spec q_noreply(Client::pid(), Command::iolist()) -> ok.
+%% @doc
+%% @see q/2
+%% Executes the command but does not wait for a response and ignores any errors.
+q_noreply(Client, Command) ->
+    cast(Client, Command).
 
 %%
 %% INTERNAL HELPERS
@@ -100,6 +126,10 @@ pipeline(_Client, [], _Timeout) ->
 pipeline(Client, Pipeline, Timeout) ->
     Request = {pipeline, [create_multibulk(Command) || Command <- Pipeline]},
     gen_server:call(Client, Request, Timeout).
+
+cast(Client, Command) ->
+    Request = {request, create_multibulk(Command)},
+    gen_server:cast(Client, Request).
 
 -spec create_multibulk(Args::iolist()) -> Command::iolist().
 %% @doc: Creates a multibulk command with all the correct size headers
