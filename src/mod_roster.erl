@@ -22,9 +22,9 @@
  
 %%%----------------------------------------------------------------------
 %%%
-%%% Add  following line to configure mod_roster_redis
+%%% Add following line in your ejabberd.cfg file to configure mod_roster_redis
 %%%
-%%% {mod_roster_redis,  [{redis_host, "localhost"}, {redis_port, 6379}]},
+%%% {mod_roster_redis,  [{redis_host, "localhost"}, {redis_port, 6379}, {redis_password, none|password}]},
 %%%
 %%%----------------------------------------------------------------------
 -module(mod_roster).
@@ -193,7 +193,12 @@ read_roster_version(LUser, LServer, mnesia) ->
 read_roster_version(LUser, LServer, redis) ->
     Redis_host = redis_host(LServer),
     Redis_port = redis_port(LServer),
-    {ok, C} = eredis:start_link(Redis_host, Redis_port, no_dbselection),
+    Redis_database = redis_database(LServer),
+    Redis_password = redis_password(LServer),
+    {ok, C} = case Redis_password of
+                none -> eredis:start_link(Redis_host, Redis_port, Redis_database, no_dbselection);
+                _ -> eredis:start_link(Redis_host, Redis_port, Redis_database, Redis_password, no_dbselection)
+              end,
     case catch eredis:q(C, ["GET", "rosterversion::" ++ LUser ++ "," ++ LServer]) of
         {ok, BVersion} when is_binary(BVersion) -> binary_to_list(BVersion);
         _ -> error 
@@ -229,7 +234,12 @@ write_roster_version(LUser, LServer, InTransaction, Ver, mnesia) ->
 write_roster_version(LUser, LServer, _InTransaction, Ver, redis) ->
     Redis_host = redis_host(LServer),
     Redis_port = redis_port(LServer),
-    {ok, C} = eredis:start_link(Redis_host, Redis_port, no_dbselection),
+    Redis_database = redis_database(LServer),
+    Redis_password = redis_password(LServer),
+    {ok, C} = case Redis_password of
+                none -> eredis:start_link(Redis_host, Redis_port, Redis_database, no_dbselection);
+                _ -> eredis:start_link(Redis_host, Redis_port, Redis_database, Redis_password, no_dbselection)
+              end,
     eredis:q(C, ["SET", "rosterversion:" ++ LUser ++ "," ++ LServer, Ver]),
     ok;
 write_roster_version(LUser, LServer, InTransaction, Ver, odbc) ->
@@ -333,9 +343,14 @@ get_roster(LUser, LServer, mnesia) ->
             []
     end;
 get_roster(LUser, LServer, redis) ->
-    Redis_host = gen_mod:get_module_opt(LServer, ?MODULE, redis_host, undefined),
-    Redis_port = gen_mod:get_module_opt(LServer, ?MODULE, redis_port, undefined),
-    {ok, C} = eredis:start_link(Redis_host, Redis_port, no_dbselection),
+    Redis_host = redis_host(LServer),
+    Redis_port = redis_port(LServer),
+    Redis_database = redis_database(LServer),
+    Redis_password = redis_password(LServer),
+    {ok, C} = case Redis_password of
+                none -> eredis:start_link(Redis_host, Redis_port, Redis_database, no_dbselection);
+                _ -> eredis:start_link(Redis_host, Redis_port, Redis_database, Redis_password, no_dbselection)
+              end,
     case catch eredis:q(C, ["HGETALL", "rosterusers::" ++ LUser ]) of
         {ok, BListEntries} when is_list(BListEntries) ->
             Entries = redis_make_list_entries(BListEntries),
@@ -676,10 +691,15 @@ roster_subscribe_t(LUser, LServer, LJID, Item) ->
 roster_subscribe_t(_LUser, _LServer, _LJID, Item, mnesia) ->
     mnesia:write(Item);
 roster_subscribe_t(LUser, LServer, LJID, Item, redis) ->
-    Redis_host = gen_mod:get_module_opt(LServer, ?MODULE, redis_host, undefined),
-    Redis_port = gen_mod:get_module_opt(LServer, ?MODULE, redis_port, undefined),
+    Redis_host = redis_host(LServer),
+    Redis_port = redis_port(LServer),
     {RUser, RServer, _} = LJID,
-    {ok, C} = eredis:start_link(Redis_host, Redis_port, no_dbselection),
+    Redis_database = redis_database(LServer),
+    Redis_password = redis_password(LServer),
+    {ok, C} = case Redis_password of
+                none -> eredis:start_link(Redis_host, Redis_port, Redis_database, no_dbselection);
+                _ -> eredis:start_link(Redis_host, Redis_port, Redis_database, Redis_password, no_dbselection)
+              end,
     Name = Item#roster.name,
     Subscription = redis_subscription_to_string(Item#roster.subscription),
     Ask = redis_ask_to_string(Item#roster.ask),
@@ -959,9 +979,14 @@ remove_user(LUser, LServer, mnesia) ->
         end,
     mnesia:transaction(F);
 remove_user(LUser, LServer, redis) ->
-    Redis_host = gen_mod:get_module_opt(LServer, ?MODULE, redis_host, undefined),
-    Redis_port = gen_mod:get_module_opt(LServer, ?MODULE, redis_port, undefined),
-    {ok, C} = eredis:start_link(Redis_host, Redis_port, no_dbselection),
+    Redis_host = redis_host(LServer),
+    Redis_port = redis_port(LServer),
+    Redis_database = redis_database(LServer),
+    Redis_password = redis_password(LServer),
+    {ok, C} = case Redis_password of
+                none -> eredis:start_link(Redis_host, Redis_port, Redis_database, no_dbselection);
+                _ -> eredis:start_link(Redis_host, Redis_port, Redis_database, Redis_password, no_dbselection)
+              end,
     eredis:q(C, ["DEL", "rosterusers::" ++ LUser ]),
     send_unsubscription_to_rosteritems(LUser, LServer),
     ok;
@@ -1039,9 +1064,14 @@ update_roster_t(_LUser, _LServer, _LJID, Item, mnesia) ->
 update_roster_t(LUser, LServer, LJID, Item, redis) ->
     {RUser, RServer, _} = LJID,
     NewRosterRedis = redis_make_record_from_roster_user(LUser, Item),
-    Redis_host = gen_mod:get_module_opt(LServer, ?MODULE, redis_host, undefined),
-    Redis_port = gen_mod:get_module_opt(LServer, ?MODULE, redis_port, undefined),
-    {ok, C} = eredis:start_link(Redis_host, Redis_port, no_dbselection),
+    Redis_host = redis_host(LServer),
+    Redis_port = redis_port(LServer),
+    Redis_database = redis_database(LServer),
+    Redis_password = redis_password(LServer),
+    {ok, C} = case Redis_password of
+                none -> eredis:start_link(Redis_host, Redis_port, Redis_database, no_dbselection);
+                _ -> eredis:start_link(Redis_host, Redis_port, Redis_database, Redis_password, no_dbselection)
+              end,
     eredis:q(C, ["HSET", "rosterusers::" ++ LUser, RUser ++ "@" ++ RServer, NewRosterRedis]),
     ok;
 update_roster_t(LUser, LServer, LJID, Item, odbc) ->
@@ -1059,9 +1089,14 @@ del_roster_t(LUser, LServer, LJID, mnesia) ->
     mnesia:delete({roster, {LUser, LServer, LJID}});
 del_roster_t(LUser, LServer, LJID, redis) ->
     {RUser, RServer, _} = LJID,
-    Redis_host = gen_mod:get_module_opt(LServer, ?MODULE, redis_host, undefined),
-    Redis_port = gen_mod:get_module_opt(LServer, ?MODULE, redis_port, undefined),
-    {ok, C} = eredis:start_link(Redis_host, Redis_port, no_dbselection),
+    Redis_host = redis_host(LServer),
+    Redis_port = redis_port(LServer),
+    Redis_database = redis_database(LServer),
+    Redis_password = redis_password(LServer),
+    {ok, C} = case Redis_password of
+                none -> eredis:start_link(Redis_host, Redis_port, Redis_database, no_dbselection);
+                _ -> eredis:start_link(Redis_host, Redis_port, Redis_database, Redis_password, no_dbselection)
+              end,
     eredis:q(C, ["HSET", "rosterusers::" ++ LUser, RUser ++ "@" ++ RServer]),
     ok;
 del_roster_t(LUser, LServer, LJID, odbc) ->
@@ -1733,11 +1768,11 @@ redis_host(Host) ->
 redis_port(Host) ->
   gen_mod:get_module_opt(Host, ?MODULE, redis_port, 6379).
 
-redis_db(Host) ->
+redis_database(Host) ->
   gen_mod:get_module_opt(Host, ?MODULE, redis_database, 0).
 
 redis_reconnect_sleep(Host) ->
   gen_mod:get_module_opt(Host, ?MODULE, reconnect_sleep, 100).
 
 redis_password(Host) ->
-  gen_mod:get_module_opt(Host, ?MODULE, redis_password, "").
+  gen_mod:get_module_opt(Host, ?MODULE, redis_password, none).
