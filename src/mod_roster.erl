@@ -1717,7 +1717,9 @@ redis_make_roster_user( _USer, _Server, [], Acc) -> Acc.
 redis_make_list_entries([HdKey | Tl]) ->
     HdValue = hd(Tl),
     Entry = {binary_to_list(HdKey), binary_to_list(HdValue)},
-    redis_make_list_entries(lists:delete(HdValue, Tl), [Entry]).
+    redis_make_list_entries(lists:delete(HdValue, Tl), [Entry]);
+redis_make_list_entries([]) -> [].
+
 redis_make_list_entries([HdKey | Tl], Acc) ->
     HdValue = hd(Tl),
     Entry = {binary_to_list(HdKey), binary_to_list(HdValue)},
