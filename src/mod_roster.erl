@@ -1095,7 +1095,7 @@ del_roster_t(LUser, LServer, LJID, redis) ->
                 none -> eredis:start_link(Redis_host, Redis_port, Redis_database, no_dbselection);
                 _ -> eredis:start_link(Redis_host, Redis_port, Redis_database, Redis_password, no_dbselection)
               end,
-    eredis:q(C, ["HSET", "rosterusers::" ++ LUser, RUser ++ "@" ++ RServer]),
+    eredis:q(C, ["HDEL", "rosterusers::" ++ LUser, RUser ++ "@" ++ RServer]),
     ok;
 del_roster_t(LUser, LServer, LJID, odbc) ->
     Username = ejabberd_odbc:escape(LUser),
