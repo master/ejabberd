@@ -683,7 +683,6 @@ ask_to_pending(subscribe) -> out;
 ask_to_pending(unsubscribe) -> none;
 ask_to_pending(Ask) -> Ask.
 
-
 roster_subscribe_t(LUser, LServer, LJID, Item) ->
     DBType = gen_mod:db_type(LServer, ?MODULE),
     roster_subscribe_t(LUser, LServer, LJID, Item, DBType).
@@ -696,14 +695,10 @@ roster_subscribe_t(LUser, LServer, LJID, Item, redis) ->
     {RUser, RServer, _} = LJID,
     Redis_database = redis_database(LServer),
     Redis_password = redis_password(LServer),
-    {ok, C} = case Redis_password of
-                none -> eredis:start_link(Redis_host, Redis_port, Redis_database, no_dbselection);
-                _ -> eredis:start_link(Redis_host, Redis_port, Redis_database, Redis_password, no_dbselection)
-              end,
     Name = Item#roster.name,
     Subscription = redis_subscription_to_string(Item#roster.subscription),
     Ask = redis_ask_to_string(Item#roster.ask),
-    AskMessage = Item#roster.askmessage,
+    AskMessage = redis_askmessage_to_string(Item#roster.askmessage),
     Groups = 
         case Item#roster.groups of
             [Grp] when is_list(Grp) -> Grp;
@@ -711,7 +706,10 @@ roster_subscribe_t(LUser, LServer, LJID, Item, redis) ->
             [] -> ""
         end,
     NewRosterEntry = Name ++ "::" ++ Subscription ++ "::" ++ Ask ++ "::" ++ AskMessage ++ "::" ++ Groups,
-    {ok, C} = eredis:start_link(Redis_host, Redis_port, no_dbselection),
+    {ok, C} = case Redis_password of
+                none -> eredis:start_link(Redis_host, Redis_port, Redis_database, no_dbselection);
+                _ -> eredis:start_link(Redis_host, Redis_port, Redis_database, Redis_password, no_dbselection)
+              end,
     eredis:q(C, ["HSET", "rosterusers::" ++ LUser, RUser ++ "@" ++ RServer, NewRosterEntry]),
     ok;
 roster_subscribe_t(LUser, LServer, LJID, Item, odbc) ->
@@ -1655,7 +1653,7 @@ redis_make_record_from_roster_user(_User, Item) ->
     Name = Item#roster.name,
     Subscription = redis_subscription_to_string(Item#roster.subscription),
     Ask = redis_ask_to_string(Item#roster.ask),
-    AskMessage = Item#roster.askmessage,
+    AskMessage = redis_askmessage_to_string(Item#roster.askmessage),
     Groups =
         case Item#roster.groups of
             [Grp] when is_list(Grp) -> Grp;
@@ -1750,6 +1748,9 @@ redis_ask_to_atom("B") -> both;
 redis_ask_to_atom("O") -> out;
 redis_ask_to_atom("I") -> in;
 redis_ask_to_atom(_)   -> none.
+
+redis_askmessage_to_string(BAskMessage) when is_binary(BAskMessage)  -> binary_to_list(BAskMessage);
+redis_askmessage_to_string(AskMessage) when is_list(AskMessage)  -> AskMessage.
 
 redis_filter_keys([HdKey | TlKeys]) ->
     K = re:split( binary_to_list(HdKey), " ",[{return,list}]),
