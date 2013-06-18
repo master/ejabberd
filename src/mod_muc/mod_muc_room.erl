@@ -283,6 +283,7 @@ normal_state({route, From, "",
                                                     case (NSD#state.config)#config.persistent of
 							true ->
                                                             mod_muc:store_room(
+                                                              NSD#state.server_host,
                                                               NSD#state.host,
                                                               NSD#state.room,
                                                               make_opts(NSD));
@@ -358,7 +359,7 @@ normal_state({route, From, "",
                                             error ->
 						ErrText = "Failed to extract "
                                                     "JID from your voice "
-                                                    "request approvement",
+                                                    "request approval",
 						Err = jlib:make_error_reply(
 							Packet,
                                                         ?ERRT_BAD_REQUEST(
@@ -887,6 +888,7 @@ process_groupchat_message(From, {xmlelement, "message", Attrs, _Els} = Packet,
 					case (NSD#state.config)#config.persistent of
 					    true ->
 						mod_muc:store_room(
+                                                  NSD#state.server_host,
 						  NSD#state.host,
 						  NSD#state.room,
 						  make_opts(NSD));
@@ -1025,6 +1027,7 @@ process_presence(From, Nick, {xmlelement, "presence", Attrs, _Els} = Packet,
 			    true ->
 				case {nick_collision(From, Nick, StateData),
 				      mod_muc:can_use_nick(
+                                        StateData#state.server_host,
 					StateData#state.host, From, Nick),
                                       {(StateData#state.config)#config.allow_visitor_nickchange,
                                        is_visitor(From, StateData)}} of
@@ -1740,7 +1743,9 @@ add_new_user(From, Nick, {xmlelement, _, Attrs, Els} = Packet, StateData) ->
 	   NUsers < MaxUsers) andalso
 	  NConferences < MaxConferences,
 	  Collision,
-	  mod_muc:can_use_nick(StateData#state.host, From, Nick),
+	  mod_muc:can_use_nick(
+            StateData#state.server_host,
+            StateData#state.host, From, Nick),
 	  get_default_role(Affiliation, StateData)} of
 	{false, _, _, _} ->
 	    % max user reached and user is not admin or owner
@@ -1852,7 +1857,7 @@ add_new_user(From, Nick, {xmlelement, _, Attrs, Els} = Packet, StateData) ->
 			      From, Err),
 			    StateData;
                         _ ->
-			    ErrText = "Unable to generate a captcha",
+			    ErrText = "Unable to generate a CAPTCHA",
 			    Err = jlib:make_error_reply(
 				    Packet, ?ERRT_INTERNAL_SERVER_ERROR(Lang, ErrText)),
 			    ejabberd_router:route( % TODO: s/Nick/""/
@@ -2580,7 +2585,8 @@ process_admin_items_set(UJID, Items, Lang, StateData) ->
 		  end, StateData, lists:flatten(Res)),
 	    case (NSD#state.config)#config.persistent of
 		true ->
-		    mod_muc:store_room(NSD#state.host, NSD#state.room,
+		    mod_muc:store_room(NSD#state.server_host,
+                                       NSD#state.host, NSD#state.room,
 				       make_opts(NSD));
 		_ ->
 		    ok
@@ -3302,7 +3308,7 @@ get_config(Lang, StateData, From) ->
 	] ++
 	case ejabberd_captcha:is_feature_available() of
 	    true ->
-	        [?BOOLXFIELD("Make room captcha protected",
+	        [?BOOLXFIELD("Make room CAPTCHA protected",
 			     "captcha_protected",
 			     Config#config.captcha_protected)];
 	    false -> []
@@ -3478,9 +3484,11 @@ change_config(Config, StateData) ->
     case {(StateData#state.config)#config.persistent,
 	  Config#config.persistent} of
 	{_, true} ->
-	    mod_muc:store_room(NSD#state.host, NSD#state.room, make_opts(NSD));
+	    mod_muc:store_room(NSD#state.server_host, NSD#state.host,
+                               NSD#state.room, make_opts(NSD));
 	{true, false} ->
-	    mod_muc:forget_room(NSD#state.host, NSD#state.room);
+	    mod_muc:forget_room(NSD#state.server_host, NSD#state.host,
+                                NSD#state.room);
 	{false, false} ->
 	    ok
     end,
@@ -3611,7 +3619,9 @@ destroy_room(DEl, StateData) ->
       end, ?DICT:to_list(StateData#state.users)),
     case (StateData#state.config)#config.persistent of
 	true ->
-	    mod_muc:forget_room(StateData#state.host, StateData#state.room);
+	    mod_muc:forget_room(
+              StateData#state.server_host,
+              StateData#state.host, StateData#state.room);
 	false ->
 	    ok
 	end,

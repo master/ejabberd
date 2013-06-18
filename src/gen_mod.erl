@@ -34,6 +34,8 @@
 	 get_opt/2,
 	 get_opt/3,
 	 get_opt_host/3,
+     db_type/1,
+     db_type/2,
 	 get_module_opt/4,
 	 get_module_opt_host/3,
 	 loaded_modules/1,
@@ -60,7 +62,29 @@ start() ->
 			       {keypos, #ejabberd_module.module_host}]),
     ok.
 
-
+start_module(Host, mod_roster_redis, Opts) ->
+    Module = mod_roster,
+    NewOpts = [{db_type, redis} | Opts],
+    set_module_opts_mnesia(Host, Module, NewOpts),
+    ets:insert(ejabberd_modules,
+	       #ejabberd_module{module_host = {Module, Host},
+				opts = NewOpts}),
+    try Module:start(Host, NewOpts)
+    catch Class:Reason ->
+	    del_module_mnesia(Host, Module),
+	    ets:delete(ejabberd_modules, {Module, Host}),
+	    ErrorText = io_lib:format("Problem starting the module ~p for host ~p ~n options: ~p~n ~p: ~p",
+		    [Module, Host, NewOpts, Class, Reason]),
+	    ?CRITICAL_MSG(ErrorText, []),
+	    case is_app_running(ejabberd) of
+		true ->
+		    erlang:raise(Class, Reason, erlang:get_stacktrace());
+		false ->
+		    ?CRITICAL_MSG("ejabberd initialization was aborted because a module start failed.", []),
+		    timer:sleep(3000),
+		    erlang:halt(string:substr(lists:flatten(ErrorText), 1, 199))
+	    end
+    end;
 start_module(Host, Module, Opts) ->
     set_module_opts_mnesia(Host, Module, Opts),
     ets:insert(ejabberd_modules,
@@ -102,6 +126,8 @@ stop_module(Host, Module) ->
 %% when ejabberd is restarted the module will be started again.
 %% This function is useful when ejabberd is being stopped
 %% and it stops all modules.
+stop_module_keep_config(Host, mod_roster_redis) ->
+stop_module_keep_config(Host, mod_roster);
 stop_module_keep_config(Host, Module) ->
     case catch Module:stop(Host) of
 	{'EXIT', Reason} ->
@@ -191,6 +217,20 @@ get_module_opt_host(Host, Module, Default) ->
 get_opt_host(Host, Opts, Default) ->
     Val = get_opt(host, Opts, Default),
     ejabberd_regexp:greplace(Val, "@HOST@", Host).
+
+db_type(Opts) ->
+    case get_opt(db_type, Opts, mnesia) of
+        odbc -> odbc;
+        redis -> redis;
+        _ -> mnesia
+    end.
+
+db_type(Host, Module) ->
+    case get_module_opt(Host, Module, db_type, mnesia) of
+        odbc -> odbc;
+        redis -> redis;
+        _ -> mnesia
+    end.
 
 loaded_modules(Host) ->
     ets:select(ejabberd_modules,

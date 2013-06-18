@@ -31,3 +31,6 @@
 
 -record(roster_version, {us,
 			version}).
+
+-define(REDIS_ROSTER_ENTRIES_SEPARATOR, "||").
+-define(REDIS_ROSTER_ITEMS_SEPARATOR, "::").

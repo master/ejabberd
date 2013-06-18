@@ -66,7 +66,7 @@
 		request_headers = [],
 		end_of_request = false,
 		default_host,
-		trail = ""
+		trail = <<>>
 	       }).
 
 
@@ -168,12 +168,12 @@ send_text(State, Text) ->
 	    exit(normal)
     end.
 
-receive_headers(State) ->
+receive_headers(#state{trail=Trail} = State) ->
     SockMod = State#state.sockmod,
     Socket = State#state.socket,
     Data = SockMod:recv(Socket, 0, 300000),
     case State#state.sockmod of
-	gen_tcp ->
+        gen_tcp ->
 	    NewState = process_header(State, Data),
 	    case NewState#state.end_of_request of
 		true ->
@@ -181,31 +181,35 @@ receive_headers(State) ->
 		_ ->
 		    receive_headers(NewState)
 	    end;
-	_ ->
-	    case Data of
-		{ok, Binary} ->
-		    {Request, Trail} = parse_request(
-					 State,
-					 State#state.trail ++ binary_to_list(Binary)),
-		    State1 = State#state{trail = Trail},
-		    NewState = lists:foldl(
-				 fun(D, S) ->
-					case S#state.end_of_request of
-					    true ->
-						S;
-					    _ ->
-						process_header(S, D)
-					end
-				 end, State1, Request),
-		    case NewState#state.end_of_request of
-			true ->
-			    ok;
-			_ ->
-			    receive_headers(NewState)
-		    end;
+        _ ->
+            case Data of
+                {ok, D} ->
+                    parse_headers(State#state{trail = <<Trail/binary, D/binary>>});
+                {error, _} ->
+                    ok
+            end
+    end.
+
+parse_headers(#state{trail = <<>>} = State) ->
+    receive_headers(State);
+parse_headers(#state{request_method = Method, trail = Data} = State) ->
+    PktType = case Method of
+                  undefined -> http;
+                  _ -> httph
+              end,
+    case decode_packet(PktType, Data) of
+        {ok, Pkt, Rest} ->
+            NewState = process_header(State#state{trail = Rest}, {ok, Pkt}),
+	    case NewState#state.end_of_request of
+		true ->
+		    ok;
 		_ ->
-		    ok
-	    end
+                    parse_headers(NewState)
+	    end;
+        {more, _} ->
+            receive_headers(State#state{trail = Data});
+        _ ->
+            ok
     end.
 
 process_header(State, Data) ->
@@ -519,16 +523,16 @@ recv_data(_State, 0, Acc) ->
     binary_to_list(list_to_binary(Acc));
 recv_data(State, Len, Acc) ->
     case State#state.trail of
-	[] ->
-	    case (State#state.sockmod):recv(State#state.socket,   Len, 300000) of
+	<<>> ->
+	    case (State#state.sockmod):recv(State#state.socket, Len, 300000) of
 		{ok, Data} ->
 		    recv_data(State, Len - size(Data), [Acc | [Data]]);
 		_ ->
 		    ""
 	    end;
 	_ ->
-	    Trail = State#state.trail,
-	    recv_data(State#state{trail = ""}, Len - length(Trail), [Acc | Trail])
+	    Trail = binary_to_list(State#state.trail),
+	    recv_data(State#state{trail = <<>>}, Len - length(Trail), [Acc | Trail])
     end.
 
 
@@ -809,7 +813,7 @@ parse_auth(_) ->
 decode_base64([]) ->
   [];
 decode_base64([Sextet1,Sextet2,$=,$=|Rest]) ->
-  Bits2x6=
+    Bits2x6=
     (d(Sextet1) bsl 18) bor
     (d(Sextet2) bsl 12),
   Octet1=Bits2x6 bsr 16,
@@ -919,41 +923,38 @@ old_integer_to_hex(I) when I>=16 ->
 
 % The following code is mostly taken from yaws_ssl.erl
 
-parse_request(State, Data) ->
-    case Data of
-	[] ->
-	    {[], []};
-	_ ->
-	    ?DEBUG("GOT ssl data ~p~n", [Data]),
-	    {R, Trail} = case State#state.request_method of
-			     undefined ->
-				 {R1, Trail1} = get_req(Data),
-				 ?DEBUG("Parsed request ~p~n", [R1]),
-				 {[R1], Trail1};
-			     _ ->
-				 {[], Data}
-			 end,
-	    {H, Trail2} = get_headers(Trail),
-	    {R ++ H, Trail2}
+extract_line(_, <<>>, _) ->
+    none;
+extract_line(0, <<"\r", Rest/binary>>, Line) ->
+    extract_line(1, Rest, Line);
+extract_line(0, <<A:8, Rest/binary>>, Line) ->
+    extract_line(0, Rest, <<Line/binary, A>>);
+extract_line(1, <<"\n", Rest/binary>>, Line) ->
+    {Line, Rest};
+extract_line(1, Data, Line) ->
+    extract_line(0, Data, <<Line/binary, "\r">>).
+
+decode_packet(_, <<"\r\n", Rest/binary>>) ->
+    {ok, http_eoh, Rest};
+decode_packet(Type, Data) ->
+    case extract_line(0, Data, <<>>) of
+        {LineB, Rest} ->
+            Line = binary_to_list(LineB),
+            Result = case Type of
+                         http ->
+                             parse_req(Line);
+                         httph ->
+                             parse_header_line(Line)
+                     end,
+            case Result of
+                {ok, H} ->
+                    {ok, H, Rest};
+                Err ->
+                    {error, Err}
+            end;
+        _ ->
+            {more, undefined}
     end.
-
-get_req("\r\n\r\n" ++ _) ->
-    bad_request;
-get_req("\r\n" ++ Data) ->
-    get_req(Data);
-get_req(Data) ->
-    {FirstLine, Trail} = lists:splitwith(fun not_eol/1, Data),
-    R = parse_req(FirstLine),
-    {R, Trail}.
-
-
-not_eol($\r)->
-    false;
-not_eol($\n) ->
-    false;
-not_eol(_) ->
-    true.
-
 
 get_word(Line)->
     {Word, T} = lists:splitwith(fun(X)-> X /= $\  end, Line),
@@ -1025,69 +1026,72 @@ parse_req(Line) ->
     end.
 
 
-get_headers(Tail) ->
-    get_headers([], Tail).
+toupper(C) when C >= $a andalso C =< $z ->
+    C - 32;
+toupper(C) ->
+    C.
 
-get_headers(H, Tail) ->
-    case get_line(Tail) of
-	{incomplete, Tail2} ->
-	    {H, Tail2};
-	{line, Line, Tail2} ->
-	    get_headers(H ++ parse_line(Line), Tail2);
-	{lastline, Line, Tail2} ->
-	    {H ++ parse_line(Line) ++ [{ok, http_eoh}], Tail2}
-    end.
+tolower(C) when C >= $A andalso C =< $Z ->
+    C + 32;
+tolower(C) ->
+    C.
 
 
-parse_line("Connection:" ++ Con) ->
-    [{ok, {http_header,  undefined, 'Connection', undefined, strip_spaces(Con)}}];
-parse_line("Host:" ++ Con) ->
-    [{ok, {http_header,  undefined, 'Host', undefined, strip_spaces(Con)}}];
-parse_line("Accept:" ++ Con) ->
-    [{ok, {http_header,  undefined, 'Accept', undefined, strip_spaces(Con)}}];
-parse_line("If-Modified-Since:" ++ Con) ->
-    [{ok, {http_header,  undefined, 'If-Modified-Since', undefined, strip_spaces(Con)}}];
-parse_line("If-Match:" ++ Con) ->
-    [{ok, {http_header,  undefined, 'If-Match', undefined, strip_spaces(Con)}}];
-parse_line("If-None-Match:" ++ Con) ->
-    [{ok, {http_header,  undefined, 'If-None-Match', undefined, strip_spaces(Con)}}];
-parse_line("If-Range:" ++ Con) ->
-    [{ok, {http_header,  undefined, 'If-Range', undefined, strip_spaces(Con)}}];
-parse_line("If-Unmodified-Since:" ++ Con) ->
-    [{ok, {http_header,  undefined, 'If-Unmodified-Since', undefined, strip_spaces(Con)}}];
-parse_line("Range:" ++ Con) ->
-    [{ok, {http_header,  undefined, 'Range', undefined, strip_spaces(Con)}}];
-parse_line("User-Agent:" ++ Con) ->
-    [{ok, {http_header,  undefined, 'User-Agent', undefined, strip_spaces(Con)}}];
-parse_line("Accept-Ranges:" ++ Con) ->
-    [{ok, {http_header,  undefined, 'Accept-Ranges', undefined, strip_spaces(Con)}}];
-parse_line("Authorization:" ++ Con) ->
-    [{ok, {http_header,  undefined, 'Authorization', undefined, strip_spaces(Con)}}];
-parse_line("Keep-Alive:" ++ Con) ->
-    [{ok, {http_header,  undefined, 'Keep-Alive', undefined, strip_spaces(Con)}}];
-parse_line("Referer:" ++ Con) ->
-    [{ok, {http_header,  undefined, 'Referer', undefined, strip_spaces(Con)}}];
-parse_line("Content-type:"++Con) ->
-    [{ok, {http_header,  undefined, 'Content-Type', undefined, strip_spaces(Con)}}];
-parse_line("Content-Type:"++Con) ->
-    [{ok, {http_header,  undefined, 'Content-Type', undefined, strip_spaces(Con)}}];
-parse_line("Content-Length:"++Con) ->
-    [{ok, {http_header,  undefined, 'Content-Length', undefined, strip_spaces(Con)}}];
-parse_line("Content-length:"++Con) ->
-    [{ok, {http_header,  undefined, 'Content-Length', undefined, strip_spaces(Con)}}];
-parse_line("Cookie:"++Con) ->
-    [{ok, {http_header,  undefined, 'Cookie', undefined, strip_spaces(Con)}}];
-parse_line("Accept-Language:"++Con) ->
-    [{ok, {http_header,  undefined, 'Accept-Language', undefined, strip_spaces(Con)}}];
-parse_line("Accept-Encoding:"++Con) ->
-    [{ok, {http_header,  undefined, 'Accept-Encoding', undefined, strip_spaces(Con)}}];
-parse_line(S) ->
-    case lists:splitwith(fun(C)->C /= $: end, S) of
-	{Name, [$:|Val]} ->
-	    [{ok, {http_header,  undefined, Name, undefined, strip_spaces(Val)}}];
-	_ ->
-	    []
-    end.
+parse_header_line(Line) ->
+    parse_header_line(Line, "", true).
+
+parse_header_line("", _, _) ->
+    bad_request;
+parse_header_line(":" ++ Rest, Name, _) ->
+    encode_header(lists:reverse(Name), Rest);
+parse_header_line("-" ++ Rest, Name, _) ->
+    parse_header_line(Rest, "-" ++ Name, true);
+parse_header_line([C | Rest], Name, true) ->
+    parse_header_line(Rest, [toupper(C) | Name], false);
+parse_header_line([C | Rest], Name, false) ->
+    parse_header_line(Rest, [tolower(C) | Name], false).
+
+
+encode_header("Connection", Con) ->
+    {ok, {http_header,  undefined, 'Connection', undefined, strip_spaces(Con)}};
+encode_header("Host", Con) ->
+    {ok, {http_header,  undefined, 'Host', undefined, strip_spaces(Con)}};
+encode_header("Accept", Con) ->
+    {ok, {http_header,  undefined, 'Accept', undefined, strip_spaces(Con)}};
+encode_header("If-Modified-Since", Con) ->
+    {ok, {http_header,  undefined, 'If-Modified-Since', undefined, strip_spaces(Con)}};
+encode_header("If-Match", Con) ->
+    {ok, {http_header,  undefined, 'If-Match', undefined, strip_spaces(Con)}};
+encode_header("If-None-Match", Con) ->
+    {ok, {http_header,  undefined, 'If-None-Match', undefined, strip_spaces(Con)}};
+encode_header("If-Range", Con) ->
+    {ok, {http_header,  undefined, 'If-Range', undefined, strip_spaces(Con)}};
+encode_header("If-Unmodified-Since", Con) ->
+    {ok, {http_header,  undefined, 'If-Unmodified-Since', undefined, strip_spaces(Con)}};
+encode_header("Range", Con) ->
+    {ok, {http_header,  undefined, 'Range', undefined, strip_spaces(Con)}};
+encode_header("User-Agent", Con) ->
+    {ok, {http_header,  undefined, 'User-Agent', undefined, strip_spaces(Con)}};
+encode_header("Accept-Ranges", Con) ->
+    {ok, {http_header,  undefined, 'Accept-Ranges', undefined, strip_spaces(Con)}};
+encode_header("Authorization", Con) ->
+    {ok, {http_header,  undefined, 'Authorization', undefined, strip_spaces(Con)}};
+encode_header("Keep-Alive", Con) ->
+    {ok, {http_header,  undefined, 'Keep-Alive', undefined, strip_spaces(Con)}};
+encode_header("Referer", Con) ->
+    {ok, {http_header,  undefined, 'Referer', undefined, strip_spaces(Con)}};
+encode_header("Content-Type", Con) ->
+    {ok, {http_header,  undefined, 'Content-Type', undefined, strip_spaces(Con)}};
+encode_header("Content-Length", Con) ->
+    {ok, {http_header,  undefined, 'Content-Length', undefined, strip_spaces(Con)}};
+encode_header("Cookie", Con) ->
+    {ok, {http_header,  undefined, 'Cookie', undefined, strip_spaces(Con)}};
+encode_header("Accept-Language", Con) ->
+    {ok, {http_header,  undefined, 'Accept-Language', undefined, strip_spaces(Con)}};
+encode_header("Accept-Encoding", Con) ->
+    {ok, {http_header,  undefined, 'Accept-Encoding', undefined, strip_spaces(Con)}};
+encode_header(Name, Val) ->
+    {ok, {http_header,  undefined, Name, undefined, strip_spaces(Val)}}.
 
 
 is_space($\s) ->
@@ -1121,30 +1125,3 @@ drop_spaces(YS=[X|XS]) ->
 	false ->
 	    YS
     end.
-
-is_nb_space(X) ->
-    lists:member(X, [$\s, $\t]).
-
-
-% ret: {line, Line, Trail} | {lastline, Line, Trail}
-
-get_line(L) ->
-    get_line(L, []).
-get_line("\r\n\r\n" ++ Tail, Cur) ->
-    {lastline, lists:reverse(Cur), Tail};
-get_line("\r\n" ++ Tail, Cur) ->
-    case Tail of
-	[] ->
-	    {incomplete, lists:reverse(Cur) ++ "\r\n"};
-	_ ->
-	    case is_nb_space(hd(Tail)) of
-		true ->  %% multiline ... continue
-		    get_line(Tail, [$\n, $\r | Cur]);
-		false ->
-		    {line, lists:reverse(Cur), Tail}
-	    end
-    end;
-get_line([H|T], Cur) ->
-    get_line(T, [H|Cur]);
-get_line([], Cur) ->
-    {incomplete, lists:reverse(Cur)}.

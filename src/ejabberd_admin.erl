@@ -41,6 +41,7 @@
 	 %% Purge DB
 	 delete_expired_messages/0, delete_old_messages/1,
 	 %% Mnesia
+	 export2odbc/2,
 	 set_master/1,
 	 backup_mnesia/1, restore_mnesia/1,
 	 dump_mnesia/1, dump_table/2, load_mnesia/1,
@@ -85,6 +86,10 @@ commands() ->
 			args = [], result = {res, rescode}},
      #ejabberd_commands{name = stop_kindly, tags = [server],
 			desc = "Inform users and rooms, wait, and stop the server",
+			longdesc = "Provide the delay in seconds, and the "
+			    "announcement quoted, for example: \n"
+			    "ejabberdctl stop_kindly 60 "
+			    "\\\"The server will stop in one minute.\\\"",
 			module = ?MODULE, function = stop_kindly,
 			args = [{delay, integer}, {announcement, string}],
 			result = {res, rescode}},
@@ -161,6 +166,11 @@ commands() ->
 			module = mod_pubsub, function = rename_default_nodeplugin,
 			args = [], result = {res, rescode}},
 
+     #ejabberd_commands{name = export2odbc, tags = [mnesia],
+			desc = "Export virtual host information from Mnesia tables to SQL files",
+			module = ?MODULE, function = export2odbc,
+			args = [{host, string}, {directory, string}],
+			result = {res, rescode}},
      #ejabberd_commands{name = set_master, tags = [mnesia],
 			desc = "Set master node of the clustered Mnesia tables",
 			longdesc = "If you provide as nodename \"self\", this "
@@ -271,7 +281,7 @@ stop_kindly(DelaySeconds, AnnouncementText) ->
 		  - TimestampStart,
 	      io:format("[~p/~p ~ps] ~s... ",
 			[NumberThis, NumberLast, SecondsDiff, Desc]),
-	      Result = apply(Mod, Func, Args),
+	      Result = (catch apply(Mod, Func, Args)),
 	      io:format("~p~n", [Result]),
 	      NumberThis+1
       end,
@@ -369,17 +379,37 @@ import_dir(Path) ->
 %%%
 
 delete_expired_messages() ->
-    {atomic, ok} = mod_offline:remove_expired_messages(),
-    ok.
+    lists:foreach(
+      fun(Host) ->
+              {atomic, ok} = mod_offline:remove_expired_messages(Host)
+      end, ?MYHOSTS).
 
 delete_old_messages(Days) ->
-    {atomic, _} = mod_offline:remove_old_messages(Days),
-    ok.
-
+    lists:foreach(
+      fun(Host) ->
+              {atomic, _} = mod_offline:remove_old_messages(Days, Host)
+      end, ?MYHOSTS).
 
 %%%
 %%% Mnesia management
 %%%
+
+export2odbc(Host, Directory) ->
+    Tables = [{export_last, last},
+              {export_offline, offline},
+              {export_private_storage, private_storage},
+              {export_roster, roster},
+              {export_vcard, vcard},
+              {export_vcard_search, vcard_search},
+              {export_passwd, passwd}],
+    Export = fun({TableFun, Table}) ->
+                     Filename = filename:join([Directory, atom_to_list(Table)++".txt"]),
+                     io:format("Trying to export Mnesia table '~p' on Host '~s' to file '~s'~n", [Table, Host, Filename]),
+                     Res = (catch ejd2odbc:TableFun(Host, Filename)),
+                     io:format("  Result: ~p~n", [Res])
+             end,
+    lists:foreach(Export, Tables),
+    ok.
 
 set_master("self") ->
     set_master(node());

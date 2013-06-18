@@ -75,24 +75,19 @@
 \newcommand{\modhttpfileserver}{\module{mod\_http\_fileserver}}
 \newcommand{\modirc}{\module{mod\_irc}}
 \newcommand{\modlast}{\module{mod\_last}}
-\newcommand{\modlastodbc}{\module{mod\_last\_odbc}}
 \newcommand{\modmuc}{\module{mod\_muc}}
 \newcommand{\modmuclog}{\module{mod\_muc\_log}}
 \newcommand{\modoffline}{\module{mod\_offline}}
-\newcommand{\modofflineodbc}{\module{mod\_offline\_odbc}}
 \newcommand{\modping}{\module{mod\_ping}}
 \newcommand{\modprescounter}{\module{mod\_pres\_counter}}
 \newcommand{\modprivacy}{\module{mod\_privacy}}
-\newcommand{\modprivacyodbc}{\module{mod\_privacy\_odbc}}
 \newcommand{\modprivate}{\module{mod\_private}}
-\newcommand{\modprivateodbc}{\module{mod\_private\_odbc}}
 \newcommand{\modproxy}{\module{mod\_proxy65}}
 \newcommand{\modpubsub}{\module{mod\_pubsub}}
 \newcommand{\modpubsubodbc}{\module{mod\_pubsub\_odbc}}
 \newcommand{\modregister}{\module{mod\_register}}
 \newcommand{\modregisterweb}{\module{mod\_register\_web}}
 \newcommand{\modroster}{\module{mod\_roster}}
-\newcommand{\modrosterodbc}{\module{mod\_roster\_odbc}}
 \newcommand{\modservicelog}{\module{mod\_service\_log}}
 \newcommand{\modsharedroster}{\module{mod\_shared\_roster}}
 \newcommand{\modsharedrosterldap}{\module{mod\_shared\_roster\_ldap}}
@@ -101,7 +96,6 @@
 \newcommand{\modtime}{\module{mod\_time}}
 \newcommand{\modvcard}{\module{mod\_vcard}}
 \newcommand{\modvcardldap}{\module{mod\_vcard\_ldap}}
-\newcommand{\modvcardodbc}{\module{mod\_vcard\_odbc}}
 \newcommand{\modvcardxupdate}{\module{mod\_vcard\_xupdate}}
 \newcommand{\modversion}{\module{mod\_version}}
 
@@ -122,6 +116,11 @@ the processing discipline for #1 IQ queries (see section~\ref{modiqdiscoption}).
   service. If the \texttt{host} option is not specified, the Jabber ID will be the
   hostname of the virtual host with the prefix `\jid{#1.}'. The keyword "@HOST@"
   is replaced at start time with the real virtual host name.
+}
+\newcommand{\dbtype}{\titem{\{db\_type, mnesia|odbc\}} \ind{options!dbtype}
+  Define the type of storage where the module will create the tables and store user information.
+  The default is to store in the internal Mnesia database.
+  If \term{odbc} value is defined, make sure you have defined the database, see~\ref{database}.
 }
 
 %% Title page
@@ -1231,6 +1230,12 @@ The default value is \term{closeold}.
 If the client uses old Jabber Non-SASL authentication (\xepref{0078}),
 then this option is not respected, and the action performed is \term{closeold}.
 
+The option \option{fqdn} allows you to define the Fully Qualified Domain Name
+of the machine, in case it isn't detected automatically.
+The FQDN is used to authenticate some clients that use the DIGEST-MD5 SASL mechanism.
+The option syntax is:
+\esyntax{\{fqdn, undefined|FqdnString|[FqdnString]\}.}
+
 \makesubsubsection{internalauth}{Internal}
 \ind{internal authentication}\ind{Mnesia}
 
@@ -1300,7 +1305,7 @@ These are the specific options:
   the authentication information since the user last disconnected,
   to verify again the user authentication without querying again the extauth script.
   Note: caching should not be enabled in a host if internal auth is also enabled.
-  If caching is enabled, \term{mod\_last} or \term{mod\_last\_odbc} must be enabled also in that vhost.
+  If caching is enabled, \term{mod\_last} must be enabled also in that vhost.
 \end{description}
 
 This example sets external authentication, the extauth script, enables caching for 10 minutes,
@@ -1439,7 +1444,7 @@ attacks.
 \item You may want to allow login access only for certain users. \term{pam\_listfile.so}
 module provides such functionality.
 \item If you use \term{pam\_winbind} to authorise against a Windows Active Directory,
-then \term{/etc/nssswitch.conf} must be configured to use \term{winbind} as well.
+then \term{/etc/nsswitch.conf} must be configured to use \term{winbind} as well.
 \end{itemize}
 
 \makesubsection{accessrules}{Access Rules}
@@ -2016,12 +2021,10 @@ MySQL interface. Anyway, the first configuration step is to define the odbc
 \ind{MySQL!storage}
 
 MySQL also can be used to store information into from several \ejabberd{}
-modules. See section~\ref{modoverview} to see which modules have a version
-with the `\_odbc'. This suffix indicates that the module can be used with
+modules. See section~\ref{modoverview} to see which modules can be used with
 relational databases like MySQL. To enable storage to your database, just make
-sure that your database is running well (see previous sections), and replace the
-suffix-less or ldap module variant with the odbc module variant. Keep in mind
-that you cannot have several variants of the same module loaded!
+sure that your database is running well (see previous sections), and add the
+module option \term{\{db\_type, odbc\}}.
 
 \makesubsection{mssql}{Microsoft SQL Server}
 \ind{Microsoft SQL Server}\ind{Microsoft SQL Server!schema}
@@ -2073,13 +2076,10 @@ ODBC compatible servers (see section~\ref{odbcauth}).
 \ind{Microsoft SQL Server!storage}
 
 Microsoft SQL Server also can be used to store information into from several
-\ejabberd{} modules. See section~\ref{modoverview} to see which modules have
-a version with the `\_odbc'. This suffix indicates that the module can be used
-with relational databases like Microsoft SQL Server. To enable storage to your
-database, just make sure that your database is running well (see previous
-sections), and replace the suffix-less or ldap module variant with the odbc
-module variant. Keep in mind that you cannot have several variants of the same
-module loaded!
+modules. See section~\ref{modoverview} to see which modules can be used with
+relational databases like MySQL. To enable storage to your database, just make
+sure that your database is running well (see previous sections), and add the
+module option \term{\{db\_type, odbc\}}.
 
 \makesubsection{pgsql}{PostgreSQL}
 \ind{PostgreSQL}\ind{PostgreSQL!schema}
@@ -2171,12 +2171,10 @@ PostgreSQL interface. Anyway, the first configuration step is to define the odbc
 \ind{PostgreSQL!storage}
 
 PostgreSQL also can be used to store information into from several \ejabberd{}
-modules. See section~\ref{modoverview} to see which modules have a version
-with the `\_odbc'. This suffix indicates that the module can be used with
-relational databases like PostgreSQL. To enable storage to your database, just
-make sure that your database is running well (see previous sections), and
-replace the suffix-less or ldap module variant with the odbc module variant.
-Keep in mind that you cannot have several variants of the same module loaded!
+modules. See section~\ref{modoverview} to see which modules can be used with
+relational databases like MySQL. To enable storage to your database, just make
+sure that your database is running well (see previous sections), and add the
+module option \term{\{db\_type, odbc\}}.
 
 \makesubsection{odbc}{ODBC Compatible}
 \ind{databases!ODBC}
@@ -2248,13 +2246,11 @@ example:
 \ind{ODBC!storage}
 
 An ODBC compatible database also can be used to store information into from
-several \ejabberd{} modules. See section~\ref{modoverview} to see which
-modules have a version with the `\_odbc'. This suffix indicates that the module
-can be used with ODBC compatible relational databases. To enable storage to your
-database, just make sure that your database is running well (see previous
-sections), and replace the suffix-less or ldap module variant with the odbc
-module variant. Keep in mind that you cannot have several variants of the same
-module loaded!
+several \ejabberd{}
+modules. See section~\ref{modoverview} to see which modules can be used with
+relational databases like MySQL. To enable storage to your database, just make
+sure that your database is running well (see previous sections), and add the
+module option \term{\{db\_type, odbc\}}.
 
 \makesubsection{ldap}{LDAP}
 \ind{databases!LDAP}
@@ -2581,36 +2577,28 @@ The following table lists all modules included in \ejabberd{}.
     \hline \ahrefloc{modhttpfileserver}{\modhttpfileserver{}} & Small HTTP file server &  \\
     \hline \ahrefloc{modirc}{\modirc{}} & IRC transport &  \\
     \hline \ahrefloc{modlast}{\modlast{}} & Last Activity (\xepref{0012}) &  \\
-    \hline \ahrefloc{modlast}{\modlastodbc{}} & Last Activity (\xepref{0012}) & supported DB (*) \\
     \hline \ahrefloc{modmuc}{\modmuc{}} & Multi-User Chat (\xepref{0045}) &  \\
     \hline \ahrefloc{modmuclog}{\modmuclog{}} & Multi-User Chat room logging & \modmuc{} \\
     \hline \ahrefloc{modoffline}{\modoffline{}} & Offline message storage (\xepref{0160}) &  \\
-    \hline \ahrefloc{modoffline}{\modofflineodbc{}} & Offline message storage (\xepref{0160}) & supported DB (*) \\
     \hline \ahrefloc{modping}{\modping{}} & XMPP Ping and periodic keepalives (\xepref{0199}) &  \\
     \hline \ahrefloc{modprescounter}{\modprescounter{}} & Detect presence subscription flood &  \\
     \hline \ahrefloc{modprivacy}{\modprivacy{}} & Blocking Communication (\xepref{0016}) &  \\
-    \hline \ahrefloc{modprivacy}{\modprivacyodbc{}} & Blocking Communication (\xepref{0016}) & supported DB (*) \\
     \hline \ahrefloc{modprivate}{\modprivate{}} & Private XML Storage (\xepref{0049}) &  \\
-    \hline \ahrefloc{modprivate}{\modprivateodbc{}} & Private XML Storage (\xepref{0049}) & supported DB (*) \\
     \hline \ahrefloc{modproxy}{\modproxy{}} & SOCKS5 Bytestreams (\xepref{0065}) &  \\
     \hline \ahrefloc{modpubsub}{\modpubsub{}} & Pub-Sub (\xepref{0060}), PEP (\xepref{0163}) & \modcaps{} \\
     \hline \ahrefloc{modpubsub}{\modpubsubodbc{}} & Pub-Sub (\xepref{0060}), PEP (\xepref{0163}) & supported DB (*) and \modcaps{} \\
     \hline \ahrefloc{modregister}{\modregister{}} & In-Band Registration (\xepref{0077}) &  \\
     \hline \ahrefloc{modregisterweb}{\modregisterweb{}} & Web for Account Registrations &  \\
     \hline \ahrefloc{modroster}{\modroster{}} & Roster management (XMPP IM) &  \\
-    \hline \ahrefloc{modroster}{\modrosterodbc{}} & Roster management (XMPP IM) & supported DB (*) \\
     \hline \ahrefloc{modservicelog}{\modservicelog{}} & Copy user messages to logger service &  \\
-    \hline \ahrefloc{modsharedroster}{\modsharedroster{}} & Shared roster management & \modroster{} or \\
-    & & \modrosterodbc\\
-    \hline \ahrefloc{modsharedrosterldap}{\modsharedrosterldap{}} & LDAP Shared roster management & \modroster{} or \\
-    & & \modrosterodbc\\
+    \hline \ahrefloc{modsharedroster}{\modsharedroster{}} & Shared roster management & \modroster{} \\
+    \hline \ahrefloc{modsharedrosterldap}{\modsharedrosterldap{}} & LDAP Shared roster management & \modroster{} \\
     \hline \ahrefloc{modsic}{\modsic{}} & Server IP Check (\xepref{0279}) &  \\
     \hline \ahrefloc{modstats}{\modstats{}} & Statistics Gathering (\xepref{0039}) &  \\
     \hline \ahrefloc{modtime}{\modtime{}} & Entity Time (\xepref{0202}) &  \\
     \hline \ahrefloc{modvcard}{\modvcard{}} & vcard-temp (\xepref{0054}) &  \\
     \hline \ahrefloc{modvcardldap}{\modvcardldap{}} & vcard-temp (\xepref{0054}) & LDAP server \\
-    \hline \ahrefloc{modvcard}{\modvcardodbc{}} & vcard-temp (\xepref{0054}) & supported DB (*) \\
-    \hline \ahrefloc{modvcardxupdate}{\modvcardxupdate{}} & vCard-Based Avatars (\xepref{0153}) & \modvcard{} or \modvcardodbc{} \\
+    \hline \ahrefloc{modvcardxupdate}{\modvcardxupdate{}} & vCard-Based Avatars (\xepref{0153}) & \modvcard{} \\
     \hline \ahrefloc{modversion}{\modversion{}} & Software Version (\xepref{0092}) &  \\
     \hline
   \end{tabular}
@@ -2622,29 +2610,9 @@ The following table lists all modules included in \ejabberd{}.
 
 You can see which database backend each module needs by looking at the suffix:
 \begin{itemize}
-\item No suffix, this means that the modules uses Erlang's built-in database
-  Mnesia as backend.
-\item `\_odbc', this means that the module needs a supported database
-  (see~\ref{database}) as backend.
+\item No suffix, this means that the module uses Erlang's built-in database
+  Mnesia as backend, or a ODBC database in some cases (see~\ref{database}).
 \item `\_ldap', this means that the module needs an LDAP server as backend.
-\end{itemize}
-
-If you want to,
-it is possible to use a relational database to store the tables created by some ejabberd modules.
-You can do this by changing the module name to a name with an
-\term{\_odbc} suffix in \ejabberd{} config file. You can use a relational
-database for the following data:
-
-\begin{itemize}
-\item Last connection date and time: Use \term{mod\_last\_odbc} instead of
-  \term{mod\_last}.
-\item Offline messages: Use \term{mod\_offline\_odbc} instead of
-  \term{mod\_offline}.
-\item Rosters: Use \term{mod\_roster\_odbc} instead of \term{mod\_roster}.
-\item Users' VCARD: Use \term{mod\_vcard\_odbc} instead of \term{mod\_vcard}.
-\item Private XML storage: Use \term{mod\_private\_odbc} instead of \term{mod\_private}.
-\item User rules for blocking communications: Use \term{mod\_privacy\_odbc} instead of \term{mod\_privacy}.
-\item Pub-Sub nodes, items and subscriptions: Use \term{mod\_pubsub\_odbc} instead of \term{mod\_pubsub}.
 \end{itemize}
 
 You can find more
@@ -2774,6 +2742,7 @@ hosts in ejabberd.
 
 Options:
 \begin{description}
+\dbtype
 \titem{\{access, AccessName\}} \ind{options!access}This option specifies who is allowed to
   send announcements and to set the message of the day (by default, nobody is
   able to send such messages).
@@ -3104,6 +3073,7 @@ End user information:
 Options:
 \begin{description}
 \hostitem{irc}
+\dbtype
 \titem{\{access, AccessName\}} \ind{options!access}This option can be used to specify who
   may use the IRC transport (default value: \term{all}).
 \titem{\{default\_encoding, Encoding\}} \ind{options!defaultencoding}Set the default IRC encoding.
@@ -3154,6 +3124,7 @@ connected user was last active on the server, or to query the uptime of the
 Options:
 \begin{description}
 \iqdiscitem{Last activity (\ns{jabber:iq:last})}
+\dbtype
 \end{description}
 
 \makesubsection{modmuc}{\modmuc{}}
@@ -3188,6 +3159,7 @@ on an available node on first connection attempt.
 Module options:
 \begin{description}
 \hostitem{conference}
+\dbtype
 \titem{\{access, AccessName\}} \ind{options!access}You can specify who is allowed to use
   the Multi-User Chat service. By default everyone is allowed to use it.
 \titem{\{access\_create, AccessName\}} \ind{options!access\_create}To configure who is
@@ -3547,6 +3519,7 @@ online again. Thus it is very similar to how email works. Note that
 (see section~\ref{ejabberdctl}).
 
 \begin{description}
+  \dbtype
   \titem{\{access\_max\_user\_messages, AccessName\}}\ind{options!access\_max\_user\_messages}
   This option defines which access rule will be enforced to limit
   the maximum number of offline messages that a user can have (quota).
@@ -3677,6 +3650,7 @@ their \XMPP{} client, they will be able to:
 Options:
 \begin{description}
 \iqdiscitem{Blocking Communication (\ns{jabber:iq:privacy})}
+\dbtype
 \end{description}
 
 \makesubsection{modprivate}{\modprivate{}}
@@ -3693,6 +3667,7 @@ of client-specific preferences; another is Bookmark Storage (\xepref{0048}).
 Options:
 \begin{description}
 \iqdiscitem{Private XML Storage (\ns{jabber:iq:private})}
+\dbtype
 \end{description}
 
 \makesubsection{modproxy}{\modproxy{}}
@@ -4033,6 +4008,7 @@ It also supports Roster Versioning (\xepref{0237}).
 Options:
 \begin{description}
 \iqdiscitem{Roster Management (\ns{jabber:iq:roster})}
+\dbtype
   \titem{\{versioning, false|true\}} \ind{options!versioning}Enables
   Roster Versioning.
   This option is disabled by default.
@@ -4109,6 +4085,11 @@ users from the shared roster groups.
 A shared roster group can have members from any XMPP server,
 but the presence will only be available from and to members
 of the same virtual host where the group is created.
+
+Options:
+\begin{description}
+\dbtype
+\end{description}
 
 Shared roster groups can be edited \emph{only} via the Web Admin. Each group
 has a unique identification and the following parameters:
@@ -4628,6 +4609,7 @@ Options:
 \begin{description}
 \hostitem{vjud}
 \iqdiscitem{\ns{vcard-temp}}
+\dbtype
 \titem{\{search, true|false\}}\ind{options!search}This option specifies whether the search
   functionality is enabled or not
   If disabled, the option \term{host} will be ignored and the
@@ -4643,7 +4625,7 @@ Options:
 \titem{\{search\_all\_hosts, true|false\}}\ind{options!search\_all\_hosts}If this option is set
   to \term{true}, search operations will apply to all virtual hosts. Otherwise
   only the current host will be searched. The default value is \term{true}.
-  This option is available in \modvcard, but not available in \modvcardodbc.
+  This option is available in \modvcard when using Mnesia, but not when using ODBC storage.
 \end{description}
 
 Examples:
@@ -4916,6 +4898,11 @@ presence stanza rewrite.
 For this reason, enabling this module will introduce a computational overhead
 in servers with clients that change frequently their presence.
 
+Options:
+\begin{description}
+\dbtype
+\end{description}
+
 \makesubsection{modversion}{\modversion{}}
 \ind{modules!\modversion{}}\ind{protocols!XEP-0092: Software Version}
 
@@ -4984,7 +4971,6 @@ In this example there is no restriction:
 \end{verbatim}
 
 If account \term{robot1@example.org} is registered in \ejabberd{} with password \term{abcdef}
-(which MD5 is E8B501798950FC58AAD83C8C14978E),
 and \term{ejabberd.cfg} contains this setting:
 \begin{verbatim}
 {hosts, ["example.org"]}.
@@ -4996,7 +4982,7 @@ then you can do this in the shell:
 \begin{verbatim}
 $ ejabberdctl registered_users example.org
 Error: no_auth_provided
-$ ejabberdctl --auth robot1 example.org E8B501798950FC58AAD83C8C14978E registered_users example.org
+$ ejabberdctl --auth robot1 example.org abcdef registered_users example.org
 robot1
 testuser1
 testuser2
@@ -5159,6 +5145,8 @@ The most interesting ones are:
   from other Jabber/XMPP servers
   There exist tutorials to
   \footahref{http://www.ejabberd.im/migrate-to-ejabberd}{migrate from other software to ejabberd}.
+\titem{export2odbc virtualhost directory} \ind{export mnesia data to SQL files}
+  Export virtual host information from Mnesia tables to SQL files.
 \titem{delete\_expired\_messages} This option can be used to delete old messages
   in offline storage. This might be useful when the number of offline messages
   is very high.
@@ -5189,7 +5177,6 @@ and is Username, Hostname and Password of a local XMPP account
 that has permission to execute the corresponding command.
 This means that the account must be registered in the local ejabberd,
 because the information will be verified.
-It is possible to provide the plaintext password or its MD5 sum.
 
 When one or several access restrictions are defined and the
 authentication information is provided,
