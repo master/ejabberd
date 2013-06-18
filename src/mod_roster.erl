@@ -1777,3 +1777,4 @@ redis_reconnect_sleep(Host) ->
 
 redis_password(Host) ->
   gen_mod:get_module_opt(Host, ?MODULE, redis_password, none).
+
